@@ -293,3 +293,22 @@ def test_fix_attempts_zero_disables_the_loop_entirely(
     assert len(roles(scripted, "build")) == 1
     assert result["fix_loop"] == {"attempts": 1, "stopped": "attempts_exhausted"}
     assert result["proposals"] == []
+
+
+def test_plan_build_and_retry_share_a_thread_and_review_never_does(
+    cartridge, plan_response, build_response, review_response
+) -> None:
+    """Continuity is for the maker. A reviewer that inherits the builder's session
+    inherits its reasoning, which is the independence the seat exists for."""
+    scripted = runner(
+        plan_response,
+        [build_response, rebuilt(build_response, PATCH_ANSWERED)],
+        [REVISE, review_response],
+        review_adversary=[ADV_OBJECTS, ADV_APPROVES],
+    )
+    lifecycle_propose.run(args(adversarial(cartridge)), scripted)
+    threads = {(c["role"], c["thread"]) for c in scripted.calls}
+    assert ("plan", "TICKET-1") in threads
+    assert all(c["thread"] == "TICKET-1" for c in roles(scripted, "build")), "both builds, first and retry"
+    for role in ("review_charter", "review_adversary", "arbitrate", "handoff"):
+        assert all(c["thread"] is None for c in roles(scripted, role)), role

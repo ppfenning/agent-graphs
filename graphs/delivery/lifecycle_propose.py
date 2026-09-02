@@ -451,6 +451,7 @@ def run(args: Mapping[str, Any], runner: NodeRunner) -> dict[str, Any]:
     plan = runner.run(
         role="plan",
         tier="standard",
+        thread=str(ticket),
         schema=PLAN_SCHEMA,
         context=context,
         prompt=(
@@ -460,9 +461,14 @@ def run(args: Mapping[str, Any], runner: NodeRunner) -> dict[str, Any]:
         ),
     )
 
+    # Plan, build and the fix-loop retry share one thread: the builder starts
+    # from what the planner already read, and a retry from a tree it already
+    # edited. Review never joins the thread — a reviewer that inherits the
+    # builder's reasoning is the failure the seat exists to prevent.
     build = runner.run(
         role="build",
         tier="standard",
+        thread=str(ticket),
         schema=BUILD_SCHEMA,
         context=context,
         prompt=(
@@ -514,6 +520,7 @@ def run(args: Mapping[str, Any], runner: NodeRunner) -> dict[str, Any]:
         retry = runner.run(
             role="build",
             tier="standard",
+            thread=str(ticket),
             schema=BUILD_SCHEMA,
             context=context,
             prompt=(

@@ -612,4 +612,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  manifest: {Path(args.runs_dir) / (run_id + '.json')}")
     print(f"  ledger  : {args.ledger}")
     record_usage(runner, runs_dir=args.runs_dir, run_id=run_id)
+    close = getattr(runner, "close", None)
+    if callable(close):
+        close()
     return 0

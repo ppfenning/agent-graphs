@@ -427,6 +427,10 @@ def run_epic(
             continue
 
         record = _run_phase(ctx, initiative=initiative, phase=phase, parent=parent, items=items)
+        # Threads live for a phase: every task's plan/build/retry is done by now.
+        close = getattr(ctx.runner, "close", None)
+        if callable(close):
+            close()
         tasks.extend(record.pop("task_records"))
         quarantined.extend(record.pop("quarantined"))
         proposals.extend(record.pop("batch"))
@@ -546,6 +550,7 @@ def _run_phase(
                         "ticket": task["id"],
                         "cartridge": ctx.cartridge,
                         "surfaces": list(task.get("surfaces") or []),
+                        "patterns": list(task.get("patterns") or []),
                         **({"fix_attempts": ctx.fix_attempts} if ctx.fix_attempts is not None else {}),
                     },
                 )
