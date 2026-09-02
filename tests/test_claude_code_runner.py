@@ -490,3 +490,18 @@ def test_nodes_are_told_to_use_absolute_paths_and_ranged_reads(fake_claude, tmp_
     system = argv[argv.index("--system-prompt") + 1]
     scratch = next(argv[i + 1] for i, a in enumerate(argv) if a == "--add-dir" and "agent-graphs-build-" in argv[i + 1])
     assert f"ABSOLUTE paths under {scratch}" in system, "the builder's paths point at its scratch, not the shared tree"
+
+
+def test_the_builder_is_handed_the_projects_check_commands_verbatim(fake_claude, tmp_path, repo) -> None:
+    """Traced builds spent a third of their turns discovering how to run the tests."""
+    runner = runner_for(fake_claude, tmp_path, repo_dir=repo)
+    runner.tools["build"] = ["Read", "Write", "Edit", "Bash"]
+    runner.check_commands = ["pytest -q", "ruff check ."]
+    runner.run(role="build", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    system = argv[argv.index("--system-prompt") + 1]
+    assert "exactly: `pytest -q; ruff check .`" in system
+    assert "wasted turn" in system
+    runner.run(role="review_charter", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    assert "exactly: `pytest" not in argv[argv.index("--system-prompt") + 1], "only the builder runs anything"

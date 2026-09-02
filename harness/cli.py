@@ -297,6 +297,9 @@ def main(argv: list[str] | None = None) -> int:
     # phase; this is the single-graph case.
     if args.repo and hasattr(runner, "repo_digest"):
         runner.repo_digest = build_digest(Path(args.repo)) or None
+    if hasattr(runner, "check_commands"):
+        checks = (cartridge.get("landing_areas") or {}).get("checks") or []
+        runner.check_commands = [str(c.get("cmd")) for c in checks if isinstance(c, dict) and c.get("cmd")]
 
     if args.graph == "epic":
         # The whole initiative. The driver gates and records PER PHASE — phase

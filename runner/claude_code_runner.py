@@ -120,6 +120,11 @@ class ClaudeCodeRunner:
         # AGENT_GRAPHS_TRACE_DIR or by the harness. Without it a 44-turn build
         # is a number; with it, it is a list of what each turn did.
         self.trace_dir: Path | None = Path(trace_dir).expanduser() if trace_dir else None
+        # The project's own check commands, verbatim from the cartridge, set by
+        # the harness. Traced builds spent a third of their turns discovering
+        # how to run the tests — the wrong interpreter, `which pytest`,
+        # `--version`, `echo hello`. The harness knows; the builder is told.
+        self.check_commands: list[str] = []
         self.role_skills = dict(role_skills or {})
         self.cwd = Path(cwd).expanduser().resolve() if cwd else Path.cwd()
         self.repo_dir: Path | None = Path(repo_dir).expanduser().resolve() if repo_dir else None
@@ -209,6 +214,15 @@ class ClaudeCodeRunner:
                 "not run is not evidence. The harness applies your patch itself, in a different "
                 "worktree, so leaving the scratch dirty is expected and correct."
             )
+            if self.check_commands:
+                cmds = "; ".join(self.check_commands)
+                lines.append(
+                    f"The project's checks are exactly: `{cmds}`. Run them as written, from the scratch "
+                    "root, and nothing else to test with: the environment is already set up, the "
+                    "right interpreter and packages are on PATH for those commands, and probing for "
+                    "them (`which`, `--version`, `python -m ...`, `echo`) is a wasted turn every time. "
+                    "If a command as written fails to start, report that verbatim and stop."
+                )
             lines.append(
                 "Work in as few turns as you can. Every turn re-sends everything you have read, so "
                 "the cost of a session grows with the square of its length: read the map, open the "

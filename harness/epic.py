@@ -494,6 +494,8 @@ def _run_phase(
         ctx.runner.repo_dir = ctx.phase_worktree(phase)
     if hasattr(ctx.runner, "repo_digest"):
         ctx.runner.repo_digest = build_digest(ctx.phase_worktree(phase)) or None
+    if hasattr(ctx.runner, "check_commands"):
+        ctx.runner.check_commands = [str(c.get("cmd")) for c in ctx.checks if c.get("cmd")]
 
     # A rebase is a WRITE, so it is a proposal like any other and joins this
     # phase's gate batch rather than happening quietly on the way past.
