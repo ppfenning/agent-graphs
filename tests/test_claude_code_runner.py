@@ -434,3 +434,59 @@ def test_the_digest_reaches_roles_with_tools_and_nobody_else(fake_claude, tmp_pa
     system = recorded(fake_claude)["argv"]
     system = system[system.index("--system-prompt") + 1]
     assert "<repo-digest>" not in system, "no repository, no map"
+
+
+# ── tracing, paths, ranged reads ─────────────────────────────────────────────
+
+
+def test_a_trace_dir_switches_to_stream_json_and_keeps_every_event(fake_claude, tmp_path) -> None:
+    script, _, set_output = fake_claude
+    events = [
+        {"type": "system", "subtype": "init"},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/r/f.py"}}]}},
+        {"type": "user", "message": {"content": []}},
+        {"type": "result", "subtype": "success", "is_error": False, "structured_output": {"ok": True},
+         "num_turns": 2, "total_cost_usd": 0.02, "usage": {"input_tokens": 10, "cache_read_input_tokens": 90, "output_tokens": 5}},
+    ]
+    (tmp_path / "output.json").write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    runner = ClaudeCodeRunner(PROFILE, claude_bin=str(script), cwd=tmp_path, trace_dir=tmp_path / "trace")
+    out = runner.run(role="build", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    assert argv[argv.index("--output-format") + 1] == "stream-json" and "--verbose" in argv
+    assert dict(out) == {"ok": True}
+    trace = tmp_path / "trace" / "build-1.jsonl"
+    assert trace.is_file() and len(trace.read_text().splitlines()) == 4
+    assert runner.calls[-1]["trace"] == str(trace) and runner.calls[-1]["turns"] == 2
+    runner.run(role="build", schema=SCHEMA, prompt="again")
+    assert (tmp_path / "trace" / "build-2.jsonl").is_file(), "one file per call, numbered per role"
+
+
+def test_a_stream_with_no_result_event_is_a_named_failure(fake_claude, tmp_path) -> None:
+    script, _, _ = fake_claude
+    (tmp_path / "output.json").write_text(json.dumps({"type": "system"}) + "\n", encoding="utf-8")
+    runner = ClaudeCodeRunner(PROFILE, claude_bin=str(script), cwd=tmp_path, trace_dir=tmp_path / "trace")
+    with pytest.raises(RunnerError, match="no result event"):
+        runner.run(role="plan", schema=SCHEMA, prompt="go")
+
+
+def test_without_a_trace_dir_nothing_changes(fake_claude, tmp_path) -> None:
+    runner = runner_for(fake_claude, tmp_path)
+    runner.run(role="plan", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    assert argv[argv.index("--output-format") + 1] == "json" and "--verbose" not in argv
+    assert "trace" not in runner.calls[-1]
+
+
+def test_nodes_are_told_to_use_absolute_paths_and_ranged_reads(fake_claude, tmp_path, repo) -> None:
+    runner = runner_for(fake_claude, tmp_path, repo_dir=repo)
+    runner.run(role="review_charter", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    system = argv[argv.index("--system-prompt") + 1]
+    assert f"ABSOLUTE paths under {repo.resolve()}" in system
+    assert "offset and limit" in system and "300" in system
+    runner.tools["build"] = ["Read", "Write", "Edit", "Bash"]
+    runner.run(role="build", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    system = argv[argv.index("--system-prompt") + 1]
+    scratch = next(argv[i + 1] for i, a in enumerate(argv) if a == "--add-dir" and "agent-graphs-build-" in argv[i + 1])
+    assert f"ABSOLUTE paths under {scratch}" in system, "the builder's paths point at its scratch, not the shared tree"

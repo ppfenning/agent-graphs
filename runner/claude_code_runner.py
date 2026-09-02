@@ -90,6 +90,7 @@ class ClaudeCodeRunner:
         claude_bin: str | None = None,
         timeout: int = 1800,
         extra_system: str = "",
+        trace_dir: Path | str | None = None,
     ) -> None:
         self.profile = dict(profile)
         self.tiers = dict(self.profile.get("tiers") or {})
@@ -115,6 +116,10 @@ class ClaudeCodeRunner:
         # A tool-computed map of the target repository, set by the harness. Shown
         # to roles that have tools, so they read it instead of drawing their own.
         self.repo_digest: str | None = None
+        # Where to keep a turn-by-turn trace of every node, if anywhere. Set from
+        # AGENT_GRAPHS_TRACE_DIR or by the harness. Without it a 44-turn build
+        # is a number; with it, it is a list of what each turn did.
+        self.trace_dir: Path | None = Path(trace_dir).expanduser() if trace_dir else None
         self.role_skills = dict(role_skills or {})
         self.cwd = Path(cwd).expanduser().resolve() if cwd else Path.cwd()
         self.repo_dir: Path | None = Path(repo_dir).expanduser().resolve() if repo_dir else None
@@ -212,6 +217,16 @@ class ClaudeCodeRunner:
                 "given, and do not polish. A session that exceeds its budget is stopped and the task "
                 "is quarantined, so a finished-but-plain patch beats an unfinished perfect one."
             )
+        if self.repo_dir or scratch is not None:
+            where = scratch if scratch is not None else self.repo_dir
+            lines.append(
+                f"Always use ABSOLUTE paths under {where} — a relative path resolves against a "
+                "directory that is not the repository, and every failed read is a wasted turn. "
+                "Read by range: the map gives line numbers, so open the 40–80 lines around the "
+                "symbol you need (Read's offset and limit), and never read a file longer than 300 "
+                "lines whole. Each turn re-sends everything already read, so a whole-file read of "
+                "a large module taxes every turn that follows it."
+            )
         if self.repo_dir:
             lines.append(
                 f"The repository this run targets is checked out at {self.repo_dir}. Read it there. "
@@ -235,7 +250,8 @@ class ClaudeCodeRunner:
             "-p",
             "--no-session-persistence",
             "--output-format",
-            "json",
+            "stream-json" if self.trace_dir else "json",
+            *(["--verbose"] if self.trace_dir else []),
             "--model",
             model,
             "--effort",
@@ -260,6 +276,36 @@ class ClaudeCodeRunner:
         # could be mistaken for a tool name. The prompt travels on stdin.
         argv += ["--tools", *(tools or [""])]
         return argv
+
+    def _payload(self, role: str, stdout: str) -> dict[str, Any]:
+        """The result object — the whole output in json mode, the last event in stream mode.
+
+        In stream mode every event is also written to the trace file, one per
+        line, so the record of WHAT a node did survives the node.
+        """
+        if not self.trace_dir:
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError as exc:
+                raise RunnerError(f"node '{role}': claude output is not JSON: {stdout[:200]}") from exc
+            return payload if isinstance(payload, dict) else {"is_error": True, "result": f"non-object output: {stdout[:200]}"}
+
+        self.trace_dir.mkdir(parents=True, exist_ok=True)
+        n = sum(1 for c in self.calls if c["role"] == role) + 1
+        path = self.trace_dir / f"{role}-{n}.jsonl"
+        path.write_text(stdout + "\n", encoding="utf-8")
+        last: dict[str, Any] | None = None
+        for line in stdout.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "result":
+                last = event
+        if last is None:
+            raise RunnerError(f"node '{role}': no result event in the stream (trace at {path})")
+        last["trace"] = str(path)
+        return last
 
     # ── execution ───────────────────────────────────────────────────────────
 
@@ -301,10 +347,7 @@ class ClaudeCodeRunner:
         if not stdout:
             tail = (proc.stderr or "").strip()[-800:]
             raise RunnerError(f"node '{role}': claude exited {proc.returncode} with no output: {tail}")
-        try:
-            payload = json.loads(stdout)
-        except json.JSONDecodeError as exc:
-            raise RunnerError(f"node '{role}': claude output is not JSON: {stdout[:200]}") from exc
+        payload = self._payload(role, stdout)
         if not isinstance(payload, dict):
             raise RunnerError(f"node '{role}': claude output is {type(payload).__name__}, expected an object")
         if payload.get("is_error"):
@@ -345,6 +388,7 @@ class ClaudeCodeRunner:
                     for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
                 ),
                 "output_tokens": int(usage.get("output_tokens") or 0),
+                **({"trace": payload["trace"]} if payload.get("trace") else {}),
             }
         )
         return NodeResult(data)

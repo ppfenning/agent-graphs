@@ -515,9 +515,12 @@ def run(args: Mapping[str, Any], runner: NodeRunner) -> dict[str, Any]:
             schema=BUILD_SCHEMA,
             context=context,
             prompt=(
-                "This change was sent back. Carry out the same plan again and return "
-                "a new unified diff.\n\n"
+                "This change was sent back. Start from the previous patch — apply it "
+                "first, then change only what the critique requires — and return a new "
+                "unified diff of the whole change.\n\n"
                 f"Ticket: {ticket}\nPlan: {plan}\n\n"
+                f"Previous patch (apply this first; do not redo the work it already did):\n"
+                f"{build.get('patch')}\n\n"
                 f"Standing critique:\n{critique}\n\n"
                 "Every objection above must actually fall — a patch that leaves one "
                 "of them standing is not a fix, and saying it is addressed is not the "

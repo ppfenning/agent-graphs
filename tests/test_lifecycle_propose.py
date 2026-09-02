@@ -207,6 +207,11 @@ def test_a_change_sent_back_is_rebuilt_with_the_critique_and_can_pass_on_the_ret
     assert len(builds) == 2, "the change was sent back, so it must actually be rebuilt"
     assert OBJECTION in builds[1]["prompt"], "the retry carries the standing objection verbatim"
     assert "must actually fall" in builds[1]["prompt"]
+    assert build_response["patch"] in builds[1]["prompt"], (
+        "the retry starts from the previous patch — a builder that has to redo the whole "
+        "task to answer one objection is the retry that blew the budget on the sixth live run"
+    )
+    assert "apply it first" in builds[1]["prompt"]
 
     assert result["fix_loop"] == {"attempts": 2, "stopped": None}
     proposal = result["proposals"][0]
