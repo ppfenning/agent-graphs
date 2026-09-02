@@ -505,3 +505,23 @@ def test_the_builder_is_handed_the_projects_check_commands_verbatim(fake_claude,
     runner.run(role="review_charter", schema=SCHEMA, prompt="go")
     argv = recorded(fake_claude)["argv"]
     assert "exactly: `pytest" not in argv[argv.index("--system-prompt") + 1], "only the builder runs anything"
+
+
+def test_bash_is_pre_approved_for_the_checks_and_git_and_nothing_else(fake_claude, tmp_path, repo) -> None:
+    """acceptEdits never covered Bash: seven epics of builds never ran a test."""
+    runner = runner_for(fake_claude, tmp_path, repo_dir=repo)
+    runner.tools["build"] = ["Read", "Write", "Edit", "Bash"]
+    runner.check_commands = ["pytest -q", "ruff check ."]
+    runner.run(role="build", schema=SCHEMA, prompt="go")
+    argv = recorded(fake_claude)["argv"]
+    i = argv.index("--allowedTools")
+    allowed = argv[i + 1 : argv.index("--tools")]
+    assert allowed == ["Bash(pytest:*)", "Bash(ruff:*)", "Bash(git status:*)", "Bash(git diff:*)", "Bash(git add:*)"]
+    assert argv[argv.index("--permission-mode") + 1] == "acceptEdits", "edits are still accepted up front"
+
+
+def test_no_bash_no_allowlist(fake_claude, tmp_path, repo) -> None:
+    runner = runner_for(fake_claude, tmp_path, repo_dir=repo)
+    runner.check_commands = ["pytest -q"]
+    runner.run(role="build", schema=SCHEMA, prompt="go")  # PROFILE grants build Read/Grep/Glob only
+    assert "--allowedTools" not in recorded(fake_claude)["argv"]

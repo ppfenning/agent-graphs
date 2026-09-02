@@ -286,6 +286,16 @@ class ClaudeCodeRunner:
                 argv += ["--add-dir", str(extra)]
         if _WRITE_TOOLS & set(tools):
             argv += ["--permission-mode", "acceptEdits"]
+        # acceptEdits covers Write and Edit and nothing else: every Bash call a
+        # builder made in the first seven epics came back "requires approval",
+        # so no test ever ran and the builder probed the environment instead.
+        # Bash is pre-approved for exactly the project's checks and the git
+        # verbs the diff needs — prefixes, so `pytest tests/x.py -q` passes —
+        # and denied for everything else, which is what a scratch tree wants.
+        if "Bash" in tools:
+            allowed = [f"Bash({cmd.split()[0]}:*)" for cmd in self.check_commands if cmd.split()]
+            allowed += ["Bash(git status:*)", "Bash(git diff:*)", "Bash(git add:*)"]
+            argv += ["--allowedTools", *dict.fromkeys(allowed)]
         # Last on purpose: `--tools` is variadic, and nothing may follow it that
         # could be mistaken for a tool name. The prompt travels on stdin.
         argv += ["--tools", *(tools or [""])]

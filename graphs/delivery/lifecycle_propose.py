@@ -168,9 +168,11 @@ ARBITRATE_SCHEMA = {
 
 DEFAULT_FIX_ATTEMPTS = 2
 
-# How much of a patch the handoff sees. Enough to judge that a real diff exists
-# and touches the files it claims; the reviewer reads the whole thing.
-PATCH_PREVIEW_CHARS = 6000
+# How much of a patch the handoff sees: all of it, up to a bound that only a
+# pathological diff reaches. A 6,000-character preview was tried first and the
+# handoff — correctly — refused every patch it could see was cut off. The
+# shuttle judges the cargo; it cannot judge half of it.
+PATCH_PREVIEW_CHARS = 200_000
 
 # Two successive patches this similar are the same patch with the whitespace
 # moved. 0.98 rather than 1.0 because a builder that re-emits its own diff
