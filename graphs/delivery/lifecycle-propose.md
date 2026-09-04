@@ -51,8 +51,9 @@ flowchart TB
         PLAN -- "both roles bound" --> ALT
         ALT --> PARB
         PARB -- "the chosen plan, verbatim" --> PADV
+        PARB -- "adversary unbound" --> BUILD
         PLAN -- "unbound" --> PADV
-        PADV -- "proceed, or revised once" --> BUILD
+        PADV -- "proceed, or revised once<br/>by the plan's author" --> BUILD
         BUILD -- "unified diff, returned not applied" --> FACTS
         FACTS --> HANDOFF
         HANDOFF -- "incomplete" --> STOP
@@ -103,20 +104,27 @@ node finishes in about ten turns for a tenth of a build, and comparing two
 short plans is a small document where comparing two diffs is not.
 
 - **`plan_alternative`** writes a second plan, shown the first only so it can
-  avoid repeating it. It is told to differ, not to critique, and it never
-  joins the first planner's thread — independence is the whole value.
+  avoid repeating it. It is told to differ, not to critique, and it works on
+  a thread of its own, never the first planner's — independence is the whole
+  value.
 - **`plan_arbitrate`** picks `first`, `second` or `merged`, and names the
   price. A pick hands the source plan to the builder VERBATIM; what was
-  compared is what gets built. Only a merge is the arbiter's own plan. The
-  competition runs only when both roles are bound: an alternative nobody
-  judges is a budget spent on a plan nobody builds.
+  compared is what gets built, and the `plan` field is not required on a
+  pick. Only a merge is the arbiter's own plan, and a `merged` that names no
+  plan stops the graph: neither planner's plan is built under the arbiter's
+  name. The arbiter, too, keeps a thread of its own. The competition runs only when both roles are bound: an
+  alternative nobody judges is a budget spent on a plan nobody builds.
 - **`plan_adversary`** attacks the chosen plan's claims — a file it assumes,
   a signature it assumes, a step that cannot be checked without doing the
   next one — while an objection still costs one more plan instead of a
-  rebuild. It gets ONE revision (same planner, same thread, the objections
-  verbatim) and the revision is not attacked again: the review round after
-  build judges it, and a loop here would be a second fix loop with none of
-  the first one's accounting.
+  rebuild. It gets ONE revision, by the plan's AUTHOR on the author's own
+  thread, with the objections verbatim: the first planner when its plan won
+  or no competition ran, the second planner when the arbiter chose `second`,
+  and the arbiter itself when the plan is a merge, since neither planner
+  wrote that one. A planner is never handed another's plan and told it is
+  its own. The revision is not attacked again: the review round after build
+  judges it, and a loop here would be a second fix loop with none of the
+  first one's accounting.
 
 The record keeps the loser, the choice and its price under
 `plan_competition`, and the attack and whether it revised under
