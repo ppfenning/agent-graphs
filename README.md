@@ -76,7 +76,7 @@ A graph is `run(args, runner) -> dict`. It owns sequence and nothing else:
 | Graph | Namespace | Shape |
 |---|---|---|
 | `initiative-decompose` | delivery | decompose → adversary-on-the-edges → emit. An idea into phases and a task DAG |
-| `lifecycle-propose` | delivery | scope → plan → build (worktree) → handoff → review → adversary → arbitrate → emit |
+| `lifecycle-propose` | delivery | scope → plan → [alternative plan → arbitrate plans] → [attack the plan] → build (worktree) → handoff → review → adversary → arbitrate → emit |
 | `triage-propose` | ops | fetch → classify → verify → emit. Zero writes; proposes corrections to the runbook it just used |
 | `epic-reconcile` | ops | compare (set arithmetic) → reconcile → emit. Declared state vs actual |
 | `phase-validate` | delivery | validate_chunk per task → validate_phase against the phase's ORIGINAL goal. Invoked by the epic driver |
