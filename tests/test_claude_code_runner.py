@@ -745,6 +745,55 @@ def test_a_threaded_budget_stop_keeps_the_thread_for_a_resume(sequenced_claude, 
     assert third[third.index("--resume") + 1] == sid, "the next call resumes the same session"
 
 
+def test_a_resumed_thread_sends_spent_plus_the_ceiling(sequenced_claude, tmp_path, repo) -> None:
+    script, set_sequence, _ = sequenced_claude
+    argv_log = tmp_path / "argvs.jsonl"
+    set_sequence(OK, REFUSED, OK)
+    profile = {**PROFILE, "budget_usd": {"standard": 1.0}}
+    runner = ClaudeCodeRunner(profile, claude_bin=str(script), cwd=tmp_path, repo_dir=repo)
+
+    runner.run(role="build", schema=SCHEMA, prompt="build it", thread="T")
+    with pytest.raises(BudgetStop):
+        runner.run(role="build", schema=SCHEMA, prompt="build more", thread="T")
+    runner.run(role="build", schema=SCHEMA, prompt="retry", thread="T")
+
+    third = json.loads(argv_log.read_text(encoding="utf-8").splitlines()[2])
+    assert third[third.index("--max-budget-usd") + 1] == "1.9700", "0.97 spent plus the 1.00 ceiling"
+
+
+def test_an_explicit_budget_on_the_resume_is_added_to_spent_too(sequenced_claude, tmp_path, repo) -> None:
+    script, set_sequence, _ = sequenced_claude
+    argv_log = tmp_path / "argvs.jsonl"
+    set_sequence(OK, REFUSED, OK)
+    profile = {**PROFILE, "budget_usd": {"standard": 1.0}}
+    runner = ClaudeCodeRunner(profile, claude_bin=str(script), cwd=tmp_path, repo_dir=repo)
+
+    runner.run(role="build", schema=SCHEMA, prompt="build it", thread="T")
+    with pytest.raises(BudgetStop):
+        runner.run(role="build", schema=SCHEMA, prompt="build more", thread="T")
+    runner.run(role="build", schema=SCHEMA, prompt="retry", thread="T", budget_usd=2.5)
+
+    third = json.loads(argv_log.read_text(encoding="utf-8").splitlines()[2])
+    assert third[third.index("--max-budget-usd") + 1] == "3.4700", "0.97 spent plus the 2.50 override"
+
+
+def test_a_successful_resume_clears_the_recorded_spend(sequenced_claude, tmp_path, repo) -> None:
+    script, set_sequence, _ = sequenced_claude
+    argv_log = tmp_path / "argvs.jsonl"
+    set_sequence(OK, REFUSED, OK, OK)
+    profile = {**PROFILE, "budget_usd": {"standard": 1.0}}
+    runner = ClaudeCodeRunner(profile, claude_bin=str(script), cwd=tmp_path, repo_dir=repo)
+
+    runner.run(role="build", schema=SCHEMA, prompt="build it", thread="T")
+    with pytest.raises(BudgetStop):
+        runner.run(role="build", schema=SCHEMA, prompt="build more", thread="T")
+    runner.run(role="build", schema=SCHEMA, prompt="retry", thread="T")
+    runner.run(role="build", schema=SCHEMA, prompt="again", thread="T")
+
+    fourth = json.loads(argv_log.read_text(encoding="utf-8").splitlines()[3])
+    assert fourth[fourth.index("--max-budget-usd") + 1] == "1.0000", "the reset spend leaves the plain ceiling"
+
+
 def test_a_threaded_budget_stop_carries_the_scratch_as_a_partial_patch(sequenced_claude, tmp_path, repo) -> None:
     script, set_sequence, _ = sequenced_claude
     script.write_text(
