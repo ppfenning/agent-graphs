@@ -77,6 +77,20 @@ _PATCH_ROLES = frozenset({"build"})
 
 _DIFF_CMD = "git add -A && git diff --cached"
 
+
+def _capture_diff(scratch: Path) -> str:
+    """The scratch's half-written change, or "" — never a raise.
+
+    A `BudgetStop` on a threaded role leaves the scratch behind for the next
+    phase to resume into; this is what lets the stopped node hand over what it
+    had already built rather than just an apology.
+    """
+    try:
+        proc = subprocess.run(_DIFF_CMD, shell=True, capture_output=True, text=True, cwd=scratch)
+    except OSError:
+        return ""
+    return proc.stdout if proc.returncode == 0 else ""
+
 # Errors that are about the CALL, not about the work. The provider's own
 # safeguard classifier occasionally flags an ordinary node message — an
 # arbitration prompt quoting two reviewers reads, to a classifier, like an
@@ -507,12 +521,22 @@ class ClaudeCodeRunner:
             if attempt == 2 or not _is_transient(payload):
                 message = f"node '{role}' failed in claude: {json.dumps(detail)[:800]}"
                 if payload.get("subtype") == "error_max_budget_usd":
+                    spent = float(payload.get("total_cost_usd") or 0.0)
+                    partial_patch = ""
+                    if thread:
+                        # Leave `state` exactly as it was — same scratch, same
+                        # `calls` — so a later `run(..., thread=same)` resumes
+                        # this session instead of starting the node over.
+                        state["spent_usd"] = spent
+                        if state.get("scratch"):
+                            partial_patch = _capture_diff(state["scratch"])
                     raise BudgetStop(
                         role=role,
                         thread=thread,
                         session=state["session"] if thread else None,
-                        spent_usd=float(payload.get("total_cost_usd") or 0.0),
+                        spent_usd=spent,
                         detail=message,
+                        partial_patch=partial_patch,
                     )
                 raise RunnerError(message)
 
